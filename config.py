@@ -8,5 +8,6 @@ label_dict = {
 
         }
 
-sampling_number = 32
+sampling_number = 64
 image_size = 64
+channels = 3

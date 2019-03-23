@@ -18,7 +18,7 @@ class Emotions(Enum):
 class VideoDataset(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, root_folder, batch_size=4, dim=(config.sampling_number, config.image_size, config.image_size),
-                 n_channels=3, n_classes=6, shuffle=True):
+                 n_channels=3, n_classes=6, shuffle=True, all_in_memory = False):
         'Initialization'
         self.root_folder = root_folder
         self.dim = dim
@@ -28,13 +28,11 @@ class VideoDataset(keras.utils.Sequence):
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.shuffle = shuffle
+        self.all_in_memory = all_in_memory
         self._prepare_training_data()
         self.on_epoch_end()
 
-
     def _prepare_training_data(self):
-        img_paths = []
-        labels = []
         classes = config.label_dict
         for subdir, dirs, files in os.walk(self.root_folder):
             for file in files:
@@ -42,6 +40,14 @@ class VideoDataset(keras.utils.Sequence):
                 label_name = subdir.rsplit(os.sep, 1)[1]
                 classes[label_name].append(file_absolute_path)
 
+        self._prepare_batch_training(classes)
+
+        if self.all_in_memory:
+            self._prepare_all_data()
+
+    def _prepare_batch_training(self, classes):
+        img_paths = []
+        labels = []
         for key, value in classes.items():
             for file_path in value:
                 img_paths.append(file_path)
@@ -49,6 +55,28 @@ class VideoDataset(keras.utils.Sequence):
 
         self.img_paths = img_paths
         self.labels = labels
+
+    def _prepare_all_data(self):
+        imgs = []
+        X = np.empty((len(self.img_paths), *self.dim, self.n_channels))
+        y = np.empty((len(self.img_paths)), dtype=int)
+
+        for i, img_path in enumerate(self.img_paths):
+            # Load video
+            video_array = self._video2memory(img_path)
+            # Sample video
+            sampled_video = self._sample_video(video_array)
+
+            # Store sample
+            X[i, ] = sampled_video
+
+            # Store class
+            y[i] = self.labels[i].value
+
+        self.x = X
+        self.y = keras.utils.to_categorical(y, num_classes=self.n_classes)
+
+        return self.x, self.y
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -92,7 +120,6 @@ class VideoDataset(keras.utils.Sequence):
             X[i, ] = sampled_video
 
             # Store class
-            print(image_labels[i].value)
             y[i] = image_labels[i].value
 
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
@@ -110,37 +137,3 @@ class VideoDataset(keras.utils.Sequence):
         random_image_frames = np.asarray(random_image_frames)
         return random_image_frames
 
-
-class Preprocessor:
-
-    def __init__(self, root_folder):
-        self.root_folder = root_folder
-
-    def prepare_training_data(self):
-        img_paths = []
-        labels = []
-        classes = config.label_dict
-        for subdir, dirs, files in os.walk(self.root_folder):
-            for file in files:
-                file_absolute_path = os.path.join(subdir, file)
-                print(file_absolute_path)
-                label_name = subdir.rsplit(os.sep, 1)[1]
-                classes[label_name].append(file_absolute_path)
-
-        for key, value in classes.items():
-            for file_path in value:
-                img_paths.append(file_path)
-                labels.append(Emotions[key])
-
-        print(img_paths[0])
-        print(labels[0])
-
-
-
-    def video2memory(self, path_to_file):
-        video_array = skvideo.io.vread(path_to_file)
-        return self.sample_video(video_array)
-
-
-    def sample_video(self, video_array):
-        return video_array[0]
