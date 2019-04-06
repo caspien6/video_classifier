@@ -8,6 +8,8 @@ import keras
 import skimage.transform as trf
 from scipy import ndimage
 import matplotlib.pyplot as plt
+import numpy as np
+import cv2
 
 class Emotions(Enum):
     Anger = 0
@@ -115,7 +117,7 @@ class VideoDataset(keras.utils.Sequence):
             # Load video
             video_array = self._video2memory(video_path)
             # Sample video
-            sampled_video = self._sample_video(video_array)
+            sampled_video = self.old_sample_video(video_array)
 
             # Store sample
             X[i, ] = sampled_video
@@ -130,17 +132,65 @@ class VideoDataset(keras.utils.Sequence):
         return skvideo.io.vread(path_to_file)
 
     @staticmethod
-    def sample_video(video_array):
+    def old_sample_video(video_array):
         indexes = np.arange(video_array.shape[0])  # 0 is the frame dimension.
         np.random.shuffle(indexes)
         indexes = np.sort(indexes[:config.sampling_number])
         # Find list of frames
-        random_image_frames = [trf.resize(video_array[k], (config.image_size, config.image_size),preserve_range=True)
+        random_image_frames = [trf.resize(video_array[k], (config.image_size, config.image_size), preserve_range=True)
                                for k in indexes]
         random_image_frames = np.asarray(random_image_frames, dtype=np.uint8)
 
         return random_image_frames
-    
+
+    @staticmethod
+    def sample_video(video_array):
+        indexes = np.arange(video_array.shape[0])  # 0 is the frame dimension.
+        np.random.shuffle(indexes)
+        #  indexes = np.sort(indexes)
+        face_cascade = cv2.CascadeClassifier(r'O:\ProgrammingSoftwares\python_projects\video_classifier\video_class_venv\Lib\site-packages\cv2\data\haarcascade_frontalface_default.xml')
+
+        sampled_video_list = []
+        chosen_indices = []
+        i = 0
+        while len(sampled_video_list) < config.sampling_number:
+            video_frame = trf.resize(video_array[indexes[i]], (config.haar_image_resize, config.haar_image_resize),
+                                     preserve_range=True)
+            video_frame = np.asarray(video_frame, np.uint8)
+            face_candidates = add_haar_face_info(video_frame, face_cascade)
+            if len(face_candidates) == 0:
+                i += 1
+                continue
+            if face_candidates.any():
+                x, y, w, h = face_candidates[0]
+                #visualize_haar_box()
+                x = max(0, x-config.haar_border_zoom)
+                x2 = min(config.haar_image_resize, x + w + config.haar_border_zoom*2)
+                y = max(0, y - config.haar_border_zoom)
+                y2 = min(config.haar_image_resize, y + h + config.haar_border_zoom*2)
+
+                video_face_box = trf.resize(video_frame[y:y2, x:x2], (config.image_size, config.image_size),
+                           preserve_range=True)
+                video_face_box = np.asarray(video_face_box, np.uint8)
+                sampled_video_list.append(video_face_box)
+                chosen_indices.append(indexes[i])
+            i += 1
+
+        zipped = zip(chosen_indices, sampled_video_list)
+        zipped = sorted(zipped, key = lambda l: l[0])
+        idxs, sampled_video_list = zip(*zipped)
+        random_image_frames = np.asarray(sampled_video_list, dtype=np.uint8)
+
+        return random_image_frames
+
+    def visualize_haar_box(self, img, facebox):
+        for (x, y, w, h) in facebox:
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+        cv2.imshow('img', img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
     def try_segmentation(self):
 
         img_path = self.img_paths[1]
@@ -167,4 +217,10 @@ class VideoDataset(keras.utils.Sequence):
 
         plt.subplots_adjust(wspace=0.02, hspace=0.3, top=1, bottom=0.1, left=0, right=1)
         plt.show()
+
+
+def add_haar_face_info(image, face_cascade):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    face_candidates = face_cascade.detectMultiScale(gray, 1.02, 4, minSize=(60, 60), maxSize=(140, 140))
+    return face_candidates
 

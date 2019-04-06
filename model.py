@@ -43,7 +43,7 @@ class VideoBoxClassifier:
         print(file_path)
         checkpoint = keras.callbacks.ModelCheckpoint(file_path, monitor='val_acc', verbose=1, save_best_only=True,
                                                      save_weights_only=False, mode='auto', period=1)
-        tfboard = keras.callbacks.TensorBoard(log_dir='./logs', histogram_freq=1, batch_size=2, write_graph=True)
+        tfboard = keras.callbacks.TensorBoard(log_dir='./logs/train_' + self.start_time, histogram_freq=1, batch_size=2, write_graph=True)
         return [checkpoint, tfboard]
 
     def train_all(self, x, y):
