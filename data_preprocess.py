@@ -6,6 +6,8 @@ from enum import Enum
 import numpy as np
 import keras
 import skimage.transform as trf
+from scipy import ndimage
+import matplotlib.pyplot as plt
 
 class Emotions(Enum):
     Anger = 0
@@ -18,7 +20,7 @@ class Emotions(Enum):
 class VideoDataset(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, root_folder, batch_size=4, dim=(config.sampling_number, config.image_size, config.image_size),
-                 n_channels=3, n_classes=6, shuffle=True, all_in_memory = False):
+                 n_channels=3, n_classes=6, shuffle=True, all_in_memory=False):
         'Initialization'
         self.root_folder = root_folder
         self.dim = dim
@@ -30,6 +32,8 @@ class VideoDataset(keras.utils.Sequence):
         self.shuffle = shuffle
         self.all_in_memory = all_in_memory
         self._prepare_training_data()
+        if self.all_in_memory:
+            self._prepare_all_data()
         self.on_epoch_end()
 
     def _prepare_training_data(self):
@@ -41,9 +45,6 @@ class VideoDataset(keras.utils.Sequence):
                 classes[label_name].append(file_absolute_path)
 
         self._prepare_batch_training(classes)
-
-        if self.all_in_memory:
-            self._prepare_all_data()
 
     def _prepare_batch_training(self, classes):
         img_paths = []
@@ -58,14 +59,14 @@ class VideoDataset(keras.utils.Sequence):
 
     def _prepare_all_data(self):
         imgs = []
-        X = np.empty((len(self.img_paths), *self.dim, self.n_channels))
-        y = np.empty((len(self.img_paths)), dtype=int)
+        X = np.empty((len(self.img_paths), *self.dim, self.n_channels), dtype=np.uint8)
+        y = np.empty((len(self.img_paths)), dtype=np.float)
 
         for i, img_path in enumerate(self.img_paths):
             # Load video
-            video_array = self._video2memory(img_path)
+            video_array = self.video2memory(img_path)
             # Sample video
-            sampled_video = self._sample_video(video_array)
+            sampled_video = self.sample_video(video_array)
 
             # Store sample
             X[i, ] = sampled_video
@@ -103,16 +104,16 @@ class VideoDataset(keras.utils.Sequence):
         if self.shuffle:
             np.random.shuffle(self.indexes)
 
-    def __data_generation(self, image_paths, image_labels):
+    def __data_generation(self, video_paths, image_labels):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
         X = np.empty((self.batch_size, *self.dim, self.n_channels))
-        y = np.empty((self.batch_size), dtype=int)
+        y = np.empty((self.batch_size), dtype=np.float)
 
         # Generate data
-        for i, img_path in enumerate(image_paths):
+        for i, video_path in enumerate(video_paths):
             # Load video
-            video_array = self._video2memory(img_path)
+            video_array = self._video2memory(video_path)
             # Sample video
             sampled_video = self._sample_video(video_array)
 
@@ -124,16 +125,46 @@ class VideoDataset(keras.utils.Sequence):
 
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
 
-    def _video2memory(self, path_to_file):
+    @staticmethod
+    def video2memory(path_to_file):
         return skvideo.io.vread(path_to_file)
 
-    def _sample_video(self, video_array):
+    @staticmethod
+    def sample_video(video_array):
         indexes = np.arange(video_array.shape[0])  # 0 is the frame dimension.
         np.random.shuffle(indexes)
-
+        indexes = np.sort(indexes[:config.sampling_number])
         # Find list of frames
-        random_image_frames = [trf.resize(video_array[k], (config.image_size, config.image_size))
-                               for k in indexes[:config.sampling_number]]
-        random_image_frames = np.asarray(random_image_frames)
+        random_image_frames = [trf.resize(video_array[k], (config.image_size, config.image_size),preserve_range=True)
+                               for k in indexes]
+        random_image_frames = np.asarray(random_image_frames, dtype=np.uint8)
+
         return random_image_frames
+    
+    def try_segmentation(self):
+
+        img_path = self.img_paths[1]
+        video_array = self._video2memory(img_path)
+        img = np.asarray(video_array[60], dtype=int)
+        hist, bin_edges = np.histogram(img, bins=60)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+        binary_img = img > 120
+
+        plt.figure(figsize=(11, 4))
+
+        plt.subplot(131)
+        plt.imshow(img)
+        plt.axis('off')
+        plt.subplot(132)
+        plt.plot(bin_centers, hist, lw=2)
+        plt.axvline(120, color='r', ls='--', lw=2)
+        plt.text(0.57, 0.8, 'histogram', fontsize=20, transform=plt.gca().transAxes)
+        plt.yticks([])
+        plt.subplot(133)
+        plt.imshow(binary_img[:, :, 0],cmap=plt.cm.gray, interpolation='nearest')
+        plt.axis('off')
+
+        plt.subplots_adjust(wspace=0.02, hspace=0.3, top=1, bottom=0.1, left=0, right=1)
+        plt.show()
 
