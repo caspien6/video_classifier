@@ -54,7 +54,7 @@ class VideoBoxClassifier:
         x = x[indices]
         y = y[indices]
         # Returns history object
-        return self.model.fit(x, y, batch_size=1, epochs=1000, shuffle=True, callbacks=callbacks, validation_split=0.1)
+        return self.model.fit(x, y, batch_size=1, epochs=150, shuffle=True, callbacks=callbacks, validation_split=0.1)
 
 
     # first good model 0.55 accuracy...

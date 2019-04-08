@@ -10,6 +10,7 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+from img_diffuser import anisodiff
 
 class Emotions(Enum):
     Anger = 0
@@ -69,7 +70,7 @@ class VideoDataset(keras.utils.Sequence):
             video_array = self.video2memory(img_path)
             # Sample video
             sampled_video = self.sample_video(video_array)
-
+            # anisodiff(sampled_video[0], ploton=True,gamma=0.25, niter=10, option=2)
             # Store sample
             X[i, ] = sampled_video
 

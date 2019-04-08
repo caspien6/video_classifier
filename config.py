@@ -8,8 +8,8 @@ label_dict = {
 
         }
 
-sampling_number = 30
-image_size = 128
+sampling_number = 60
+image_size = 64
 haar_image_resize = 240
 haar_border_zoom = 10 # in pixel
 channels = 3

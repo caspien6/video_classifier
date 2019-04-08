@@ -4,6 +4,11 @@ import numpy as np
 
 import config
 
+def show_model_summary():
+    video_box_gen = model.VideoBoxClassifier()
+    video_box_gen.model.summary()
+
+
 def videobox_few_training():
     root_folder = r'O:\ProgrammingSoftwares\python_projects\video_classifier\data\few_training'
     video_box_gen = model.VideoBoxClassifier()
