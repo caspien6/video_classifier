@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 from img_diffuser import anisodiff
+from moviepy.editor import *
 
 class Emotions(Enum):
     Anger = 0
@@ -20,24 +21,38 @@ class Emotions(Enum):
     Sadness = 4
     Surprise = 5
 
+
 class VideoDataset(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, root_folder, batch_size=4, dim=(config.sampling_number, config.image_size, config.image_size),
-                 n_channels=3, n_classes=6, shuffle=True, all_in_memory=False):
+                 n_channels=1, n_classes=6, shuffle=True, all_in_memory=False,
+                 cache_dir=r'O:\ProgrammingSoftwares\python_projects\video_classifier\data\cache\training'):
         'Initialization'
         self.root_folder = root_folder
         self.dim = dim
         self.batch_size = batch_size
         self.labels = None
+        self.cache_dir = cache_dir
         self.img_paths = None
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.shuffle = shuffle
         self.all_in_memory = all_in_memory
         self._prepare_training_data()
-        if self.all_in_memory:
-            self._prepare_all_data()
-        self.on_epoch_end()
+        if len(os.listdir(self.cache_dir)) == 0:
+            if self.all_in_memory:
+                self._prepare_all_data()
+            self.on_epoch_end()
+        else:
+            if self.all_in_memory:
+                self._load_from_cache()
+            self.on_epoch_end()
+
+    def _load_from_cache(self):
+        print('Loading data from cache...')
+        self.x = np.load(os.path.join(self.cache_dir, 'sampled_videos.npy'))
+        self.y = np.load(os.path.join(self.cache_dir, 'labels.npy'))
+
 
     def _prepare_training_data(self):
         classes = config.label_dict
@@ -66,20 +81,25 @@ class VideoDataset(keras.utils.Sequence):
         y = np.empty((len(self.img_paths)), dtype=np.float)
 
         for i, img_path in enumerate(self.img_paths):
+
+            with VideoFileClip(img_path) as video:
+                audio_array = video.audio.to_soundarray().sum(axis=1)/2
             # Load video
             video_array = self.video2memory(img_path)
             # Sample video
-            sampled_video = self.sample_video(video_array)
+            sampled_video = self.sample_video(video_array, audio_array)
+
             # anisodiff(sampled_video[0], ploton=True,gamma=0.25, niter=10, option=2)
             # Store sample
             X[i, ] = sampled_video
 
             # Store class
             y[i] = self.labels[i].value
-
+        plt.show()
         self.x = X
         self.y = keras.utils.to_categorical(y, num_classes=self.n_classes)
-
+        np.save(os.path.join(self.cache_dir, 'sampled_videos.npy'), self.x)
+        np.save(os.path.join(self.cache_dir, 'labels.npy'), self.y)
         return self.x, self.y
 
     def __len__(self):
@@ -117,6 +137,8 @@ class VideoDataset(keras.utils.Sequence):
         for i, video_path in enumerate(video_paths):
             # Load video
             video_array = self._video2memory(video_path)
+            video = VideoFileClip(video_path)
+            audio_array = video.audio.to_soundarray().sum(axis=1)/2
             # Sample video
             sampled_video = self.old_sample_video(video_array)
 
@@ -130,7 +152,7 @@ class VideoDataset(keras.utils.Sequence):
 
     @staticmethod
     def video2memory(path_to_file):
-        return skvideo.io.vread(path_to_file)
+        return skvideo.io.vread(path_to_file, as_grey=True)
 
     @staticmethod
     def old_sample_video(video_array):
@@ -145,8 +167,14 @@ class VideoDataset(keras.utils.Sequence):
         return random_image_frames
 
     @staticmethod
-    def sample_video(video_array):
+    def sample_video(video_array, audio_array):
+        #plt.plot(audio_array)
+        #plt.show()
+        first_occurence = int(np.argmax(audio_array > 0.04) / (len(audio_array) / video_array.shape[0]))
+        reversed_audio_array = audio_array[::-1]
+        last_occurence = video_array.shape[0] - int(np.argmax(reversed_audio_array > 0.04) / (len(audio_array) / video_array.shape[0])) - 1
         indexes = np.arange(video_array.shape[0])  # 0 is the frame dimension.
+        indexes = indexes[first_occurence:]
         np.random.shuffle(indexes)
         #  indexes = np.sort(indexes)
         face_cascade = cv2.CascadeClassifier(r'O:\ProgrammingSoftwares\python_projects\video_classifier\video_class_venv\Lib\site-packages\cv2\data\haarcascade_frontalface_default.xml')
@@ -155,26 +183,30 @@ class VideoDataset(keras.utils.Sequence):
         chosen_indices = []
         i = 0
         while len(sampled_video_list) < config.sampling_number:
-            video_frame = trf.resize(video_array[indexes[i]], (config.haar_image_resize, config.haar_image_resize),
-                                     preserve_range=True)
-            video_frame = np.asarray(video_frame, np.uint8)
-            face_candidates = add_haar_face_info(video_frame, face_cascade)
-            if len(face_candidates) == 0:
-                i += 1
-                continue
-            if face_candidates.any():
-                x, y, w, h = face_candidates[0]
-                #visualize_haar_box()
-                x = max(0, x-config.haar_border_zoom)
-                x2 = min(config.haar_image_resize, x + w + config.haar_border_zoom*2)
-                y = max(0, y - config.haar_border_zoom)
-                y2 = min(config.haar_image_resize, y + h + config.haar_border_zoom*2)
+            try:
+                video_frame = trf.resize(video_array[indexes[i]], (config.haar_image_resize, config.haar_image_resize),
+                                         preserve_range=True)
+                video_frame = np.asarray(video_frame, np.uint8)
+                face_candidates = add_haar_face_info(video_frame, face_cascade)
+                if len(face_candidates) == 0:
+                    i += 1
+                    continue
+                if face_candidates.any():
+                    x, y, w, h = face_candidates[0]
+                    #visualize_haar_box()
+                    x = max(0, x-config.haar_border_zoom)
+                    x2 = min(config.haar_image_resize, x + w + config.haar_border_zoom*2)
+                    y = max(0, y - config.haar_border_zoom)
+                    y2 = min(config.haar_image_resize, y + h + config.haar_border_zoom*2)
 
-                video_face_box = trf.resize(video_frame[y:y2, x:x2], (config.image_size, config.image_size),
-                           preserve_range=True)
-                video_face_box = np.asarray(video_face_box, np.uint8)
-                sampled_video_list.append(video_face_box)
-                chosen_indices.append(indexes[i])
+                    video_face_box = trf.resize(video_frame[y:y2, x:x2], (config.image_size, config.image_size),
+                               preserve_range=True)
+                    video_face_box = np.asarray(video_face_box, np.uint8)
+                    sampled_video_list.append(video_face_box)
+                    chosen_indices.append(indexes[i])
+            except:
+                i+=1
+                continue
             i += 1
 
         zipped = zip(chosen_indices, sampled_video_list)
@@ -221,7 +253,10 @@ class VideoDataset(keras.utils.Sequence):
 
 
 def add_haar_face_info(image, face_cascade):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    face_candidates = face_cascade.detectMultiScale(gray, 1.02, 4, minSize=(60, 60), maxSize=(140, 140))
+    if image.shape[-1] != 1:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+    face_candidates = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80), maxSize=(140, 140))
     return face_candidates
 
