@@ -3,7 +3,8 @@ import model
 import numpy as np
 import os
 import config
-
+from evalute_tests import Evaluator
+from keras.models import load_model
 
 def show_model_summary():
     video_box_gen = model.VideoBoxClassifier()
@@ -53,6 +54,19 @@ def videobox_all_training():
 
     history = video_box_gen.train_all(dataset.x, dataset.y, (validation_data.x, validation_data.y))
 
+
+def image_evaluation():
+    root = r'O:\ProgrammingSoftwares\python_projects\video_classifier\data'
+    test_root_folder = os.path.join(root, 'test')
+    validation_root_folder = os.path.join(root, 'validate')
+    model_path =  os.path.join(root, r'weights\fewimage_train_weights.20190504235339.h5')
+    evaluator = Evaluator(test_root_folder)
+    model = load_model(model_path)
+
+    evaluator.make_prediction(model, 'TestResults_11.xlsx')
+    dataset = data_preprocess_img.ImageDataset(validation_root_folder,
+                                               cache_dir=os.path.join(root, r'cache\validate\not_sorted'), shuffle=False)
+    evaluator.measure_model(model, dataset)
 
 def image_few_training():
     root = r'O:\ProgrammingSoftwares\python_projects\video_classifier\data'

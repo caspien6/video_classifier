@@ -5,6 +5,7 @@ import os.path as paths
 import datetime
 import config
 import numpy as np
+from keras.regularizers import l1, l2
 
 class VideoBoxClassifier:
 
@@ -62,25 +63,30 @@ class ImageClassifier:
         self.start_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
     def _create_model(self):
+        l1_regularization = 0.0001
+        l2_reg = 0.1
         model = Sequential()
         model.add(Conv2D(64, (3, 3), strides=2, padding='same',activation='relu',
                          kernel_initializer=keras.initializers.lecun_normal(seed=45),
                          input_shape=(config.image_size, config.image_size, config.channels),
-                         data_format='channels_last'))
+                         kernel_regularizer=l2(l2_reg), data_format='channels_last'))
         model.add(Conv2D(64, (3, 3), strides=2, padding='same', activation='relu',
-                         kernel_initializer=keras.initializers.lecun_normal(seed=32)))
+                         kernel_initializer=keras.initializers.lecun_normal(seed=32),
+                         kernel_regularizer=l2(l2_reg)))
 
         model.add(BatchNormalization())
         model.add(MaxPool2D(2, strides=2))
         model.add(Conv2D(128, (3, 3), strides=2, padding='same', activation='relu',
-                         kernel_initializer=keras.initializers.lecun_normal(seed=32)))
+                         kernel_initializer=keras.initializers.lecun_normal(seed=32),
+                         kernel_regularizer=l2(l2_reg)))
         model.add(Conv2D(128, (3, 3), strides=2, padding='same', activation='relu',
-                         kernel_initializer=keras.initializers.lecun_normal(seed=32)))
+                         kernel_initializer=keras.initializers.lecun_normal(seed=32),
+                         kernel_regularizer=l2(l2_reg)))
 
         model.add(BatchNormalization())
         model.add(MaxPool2D(2, strides=2))
         model.add(Flatten())
-        model.add(Dense(256, activation='sigmoid', kernel_initializer=keras.initializers.lecun_normal(seed=23)))
+        model.add(Dense(256, activation='sigmoid', activity_regularizer=l2(l2_reg), kernel_initializer=keras.initializers.lecun_normal(seed=23)))
 
         # model.add(Dropout(0.25))
         model.add(Dense(len(config.label_dict), activation='softmax',
