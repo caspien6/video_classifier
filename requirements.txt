@@ -22,7 +22,7 @@ Markdown==3.0.1
 matplotlib==3.0.3
 moviepy==1.0.0
 networkx==2.2
-nltk==3.4
+nltk==3.4.5
 numpy==1.14.5
 opencv-python==4.0.0.21
 Pillow==5.4.1
